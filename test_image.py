@@ -422,6 +422,12 @@ def set_safetyzone(points, divider):
     return new_points
 
 if __name__ == '__main__':
+    font = cv2.FONT_HERSHEY_SIMPLEX  # 폰트 선택
+    font_scale = 1  # 폰트 스케일
+    font_thickness = 2  # 폰트 두께
+    text_color = (0, 255, 0)  # 텍스트 색상 (BGR)
+    text_position = (50, 100)  # 텍스트 위치 (x, y)
+
     first_frame = 1
     model = net.TwinLiteNet()
     model = torch.nn.DataParallel(model)
@@ -464,15 +470,17 @@ if __name__ == '__main__':
         # annotated_frame = results[0].plot(boxes=False)
         """---------------------------------- Result -----------------------------"""
         lane_points = points
-        points = set_safetyzone(points, 1.3)
+        points = set_safetyzone(points, 1)
         if results[0].masks is None:
             continue
         object_polygon_xy = results[0].masks.xy
+        object_class = results[0].names
+        iou_class = results[0].boxes.cls
         iou_sum = []
         points_poly = Polygon(points)
         points_poly = points_poly.buffer(0)
-
-        for obj in object_polygon_xy:
+        detect_obj = []
+        for i ,obj in enumerate(object_polygon_xy):
             if len(obj) < 4 :
                 continue
             object_polygon = Polygon(obj)
@@ -481,13 +489,19 @@ if __name__ == '__main__':
             union = object_polygon.union(points_poly).area
             iou = intersect / union
             # print(iou)  # iou = 0.5
+            detect_class = object_class[int(iou_class[i])]
             if iou > 0:
                 iou_sum.append(iou)
+                detect_obj.append(detect_class)
 
         im_array = results[0].plot(masks=True, boxes=False)  # plot a BGR numpy array of predictions
+        warning_text = ""
+
         if len(iou_sum) != 0:
+            warning_text = warning_text.join(detect_obj) + " is closing!!"
             iou_mean = np.sum(iou_sum) + 2
             im_array[:, :, 2] = im_array[:, :, 2] * iou_mean
+            cv2.putText(im_array, warning_text, text_position, font, font_scale,text_color, font_thickness)
         cv2.polylines(im_array, [lane_points], isClosed=True, color=(0,255,0), thickness=2)
         cv2.fillPoly(im_array, [points], (255, 255, 255))
         out.write(im_array)
