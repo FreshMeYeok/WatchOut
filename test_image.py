@@ -7,6 +7,7 @@ from ultralytics import YOLO
 import time
 import math
 from shapely.geometry import Polygon
+import os
 
 def Run(model,img):
     # img = cv2.resize(img, (640, 360))
@@ -436,7 +437,7 @@ if __name__ == '__main__':
     model.eval()
     detection_model = YOLO('best 3.pt')
 
-    cap = cv2.VideoCapture('/home/cvlab/Datasets/video.mp4')    # video setting
+    cap = cv2.VideoCapture('/home/cvlab/Datasets/video_night.mp4')    # video setting
     width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
@@ -467,7 +468,8 @@ if __name__ == '__main__':
         # cv2.imshow('real_image', real_image)
         """--------------------------------- Object Detection---------------------------"""
         results = detection_model(cpframe)
-        # annotated_frame = results[0].plot(boxes=False)
+        annotated_frame = results[0].plot(boxes=False)
+        cv2.imshow('anoo!!', annotated_frame)
         """---------------------------------- Result -----------------------------"""
         lane_points = points
         points = set_safetyzone(points, 1)
@@ -489,7 +491,7 @@ if __name__ == '__main__':
             iou = intersect / points_poly.area
             # print(iou)  # iou = 0.5
             detect_class = object_class[int(iou_class[i])]
-            if iou > 0:
+            if iou > 0.01:
                 iou_sum.append(iou)
                 detect_obj.append(detect_class)
 
@@ -509,6 +511,25 @@ if __name__ == '__main__':
         cv2.imshow('Lane and Object Detection', im_array)
         if cv2.waitKey(10) == 27:
             break
+    # 디렉토리 경로
+    directory_path = '/home/cvlab/DoTA_dataset/frames/0qfbmt4G8Rw_001602/images'
+
+    # 디렉토리 내의 모든 파일 목록 가져오기
+    file_list = os.listdir(directory_path)
+
+    # jpg 파일만 필터링
+    jpg_files = [file for file in file_list if file.endswith('.jpg')]
+
+    # 각 jpg 파일을 읽어와서 처리
+    for jpg_file in jpg_files:
+        file_path = os.path.join(directory_path, jpg_file)
+        image = cv2.imread(file_path)
+
+        # 여기서 image 변수를 사용하여 이미지를 처리하거나 원하는 작업을 수행합니다.
+
+        # 필요한 작업을 수행한 후 이미지 객체를 해제합니다.
+        cv2.destroyAllWindows()
+
 
     cap.release()
     out.release()
