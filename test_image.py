@@ -486,8 +486,7 @@ if __name__ == '__main__':
             object_polygon = Polygon(obj)
             object_polygon = object_polygon.buffer(0)
             intersect = object_polygon.intersection(points_poly).area
-            union = object_polygon.union(points_poly).area
-            iou = intersect / union
+            iou = intersect / points_poly.area
             # print(iou)  # iou = 0.5
             detect_class = object_class[int(iou_class[i])]
             if iou > 0:
@@ -498,7 +497,7 @@ if __name__ == '__main__':
         warning_text = ""
 
         if len(iou_sum) != 0:
-            warning_text = warning_text.join(detect_obj) + " is closing!!"
+            warning_text = warning_text.join(detect_obj) + " is close!!"
             iou_mean = np.sum(iou_sum) + 2
             im_array[:, :, 2] = im_array[:, :, 2] * iou_mean
             cv2.putText(im_array, warning_text, text_position, font, font_scale,text_color, font_thickness)
