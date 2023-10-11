@@ -40,7 +40,7 @@ def Run(model,img):
     # img_rs[DA>100]=[255,0,0]
     img_rs[LL>100]=[0,255,0]
     
-    return img_rs\
+    return img_rs
 # Color
 red = (0, 0, 255)
 green = (0, 255, 0)
