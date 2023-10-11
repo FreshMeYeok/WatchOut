@@ -40,10 +40,7 @@ def Run(model,img):
     # img_rs[DA>100]=[255,0,0]
     img_rs[LL>100]=[0,255,0]
     
-    return img_rs
-
-
-
+    return img_rs\
 # Color
 red = (0, 0, 255)
 green = (0, 255, 0)
@@ -69,7 +66,6 @@ def save_video(filename, frame=20.0):
     fourcc = cv2.VideoWriter_fourcc(*'DIVX')
     out = cv2.VideoWriter(filename, fourcc, frame, (1280,720))
     return out
-
 
 def grayscale(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -115,10 +111,7 @@ def roi2bev(roi_img, vertices):     # Bird's eye view
 """bev image를 roi image로 변환"""
 def bev2roi(bev_img, M, vertices):
     bev2roi_start = time.time()
-
     linV = np.linalg.inv(M)
-
-
     lindst = cv2.warpPerspective(bev_img, linV, (1280, 720))
 
     # Create a mask of the region of interest using vertices
@@ -223,8 +216,6 @@ def preprocess(img):
     mask_green = cv2.inRange(img_hsv, lower_green, upper_green)
     mask_yw_image = cv2.bitwise_and(gray_image, mask_green)  # Grayscale로 변환한 원본 이미지에서 흰색과 노란색만 추출
 
-
-
     canny_edges = auto_canny(mask_yw_image, kernel_size)
 
     preprocess_start = time.time()
@@ -240,7 +231,6 @@ def preprocess(img):
     return result, line_image, lane_space
 
 def convert_hough(img, rho, theta, threshold, min_line_len, max_line_gap, vertices):
-
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
     # hough_start = time.time()
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
@@ -586,10 +576,6 @@ if __name__ == '__main__':
     # for jpg_file in jpg_files:
     #     file_path = os.path.join(directory_path, jpg_file)
     #     image = cv2.imread(file_path)
-    #
-    #     # 여기서 image 변수를 사용하여 이미지를 처리하거나 원하는 작업을 수행합니다.
-    #
-    #     # 필요한 작업을 수행한 후 이미지 객체를 해제합니다.
     #     cv2.destroyAllWindows()
     with open('execution_times.csv', 'w', newline='') as csv_file:
         fieldnames = ["Process Time", "Yolo Time", "Twin Time"]
