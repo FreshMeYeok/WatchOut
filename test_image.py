@@ -41,6 +41,9 @@ def Run(model,img):
     img_rs[LL>100]=[0,255,0]
     
     return img_rs
+
+
+
 # Color
 red = (0, 0, 255)
 green = (0, 255, 0)
@@ -66,6 +69,7 @@ def save_video(filename, frame=20.0):
     fourcc = cv2.VideoWriter_fourcc(*'DIVX')
     out = cv2.VideoWriter(filename, fourcc, frame, (1280,720))
     return out
+
 
 def grayscale(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -110,8 +114,9 @@ def roi2bev(roi_img, vertices):     # Bird's eye view
 
 """bev image를 roi image로 변환"""
 def bev2roi(bev_img, M, vertices):
-    bev2roi_start = time.time()
+
     linV = np.linalg.inv(M)
+
     lindst = cv2.warpPerspective(bev_img, linV, (1280, 720))
 
     # Create a mask of the region of interest using vertices
@@ -121,12 +126,9 @@ def bev2roi(bev_img, M, vertices):
     # Apply the mask to the lindst image
     lindst = cv2.bitwise_and(lindst, mask)
 
-
     vertices, points = find_white_contour_vertices(lindst, vertices)
     # cv2.imshow('lindst', lindst)
-    bev2roi_end = time.time()
-    bev2roi_time = round(bev2roi_end - bev2roi_start, 3)
-    print(f'bev2roi run time : {bev2roi_time}')
+
     return lindst, vertices, points
 
 
@@ -216,21 +218,19 @@ def preprocess(img):
     mask_green = cv2.inRange(img_hsv, lower_green, upper_green)
     mask_yw_image = cv2.bitwise_and(gray_image, mask_green)  # Grayscale로 변환한 원본 이미지에서 흰색과 노란색만 추출
 
-    canny_edges = auto_canny(mask_yw_image, kernel_size)
 
-    preprocess_start = time.time()
+    canny_edges = auto_canny(mask_yw_image, kernel_size)
     line_image, lane_space = convert_hough(canny_edges, rho, theta, thresh, min_line_len, max_line_gap, vertices)
     # cv2.imshow('line_image', line_image)
 
-    preprocess_end = time.time()
-    preprocess_time = round(preprocess_end - preprocess_start, 3)
-    print(f"preprocess 실행 시간: {preprocess_time} 초")
+
     result = weighted_img(line_image, img, α=1., β=1., λ=0.)
     # cv2.polylines(result, vertices, True, (0, 255, 255)) # ROI mask
 
     return result, line_image, lane_space
 
 def convert_hough(img, rho, theta, threshold, min_line_len, max_line_gap, vertices):
+
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
     # hough_start = time.time()
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
@@ -384,8 +384,8 @@ def find_center_of_points(points):
     :param points: (N, 2) 형태의 NumPy 배열. 각 행은 (x, y) 좌표를 나타냄.
     :return: 중심점 좌표 (x_center, y_center)
     """
-    x_mean = np.mean(points[:, 0])
-    y_mean = np.mean(points[:, 1])
+    x_mean = int(np.mean(points[:, 0]))
+    y_mean = int(np.mean(points[:, 1]))
     return x_mean, y_mean
 
 if __name__ == '__main__':
@@ -468,11 +468,8 @@ if __name__ == '__main__':
 
         dst, M = roi2bev(roi_view, vertices)
 
-        x = time.time()
         result, line_image, lane_space = preprocess(dst)
-        xend = time.time()
-        xrun = round(xend - x, 3)
-        print(f"x 실행 시간: {xrun} 초")
+
         # cv2.imshow("resultss", result)
         final_image, real_lane, points = bev2roi(result, M, vertices)
 
@@ -526,7 +523,7 @@ if __name__ == '__main__':
                 iou_sum.append(iou)
                 detect_obj.append(detect_class)
             else:
-                distance = math.sqrt((obj_center_x - point_center_x)**2 + (obj_center_y - point_center_y) ** 2)
+                distance = math.sqrt((obj_center_x - point_center_x) ** 2 + (obj_center_y - point_center_y) ** 2)
                 distance_list.append(distance)
         im_array = results[0].plot(masks=True, boxes=False)  # plot a BGR numpy array of predictions
         warning_text = ""
@@ -535,10 +532,12 @@ if __name__ == '__main__':
             warning_text = "Watch out the " + ", ".join(detect_obj)
             iou_mean = np.sum(iou_sum) + 2
             im_array[:, :, 2] = im_array[:, :, 2] * iou_mean
-            cv2.putText(im_array, warning_text, text_position, font, font_scale,text_color, font_thickness)
+            cv2.putText(im_array, warning_text, text_position, font, font_scale, text_color, font_thickness)
             cv2.circle(im_array, circle_position, radius, red, -1)
-        elif any(x <= 100 for x in distance_list):
+        elif any(x <= 90 for x in distance_list):
+            text = "Attention!"
             cv2.circle(im_array, circle_position, radius, yellow, -1)
+            cv2.putText(im_array, text, text_position, font, font_scale, text_color, font_thickness)
         else:
             cv2.circle(im_array, circle_position, radius, green, -1)
 
@@ -576,6 +575,10 @@ if __name__ == '__main__':
     # for jpg_file in jpg_files:
     #     file_path = os.path.join(directory_path, jpg_file)
     #     image = cv2.imread(file_path)
+    #
+    #     # 여기서 image 변수를 사용하여 이미지를 처리하거나 원하는 작업을 수행합니다.
+    #
+    #     # 필요한 작업을 수행한 후 이미지 객체를 해제합니다.
     #     cv2.destroyAllWindows()
     with open('execution_times.csv', 'w', newline='') as csv_file:
         fieldnames = ["Process Time", "Yolo Time", "Twin Time"]
