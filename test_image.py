@@ -4,16 +4,14 @@ import torch
 from model import TwinLite as net
 import cv2
 from ultralytics import YOLO
-import time
 import math
 from shapely.geometry import Polygon
-import os
 import time
 import csv
 import signal
 import sys
 
-default_space = np.array([[320, 720], [960, 720], [700, 450], [500, 450]])
+default_space = np.array([[100, 360], [540, 360], [360, 180], [280, 180]])
 half_w = default_space[0][0] + (default_space[1][0] - default_space[0][0]) // 2
 
 def Run(model,img):
@@ -117,7 +115,7 @@ def bev2roi(bev_img, M, vertices):
 
     linV = np.linalg.inv(M)
 
-    lindst = cv2.warpPerspective(bev_img, linV, (1280, 720))
+    lindst = cv2.warpPerspective(bev_img, linV, (640, 360))
 
     # Create a mask of the region of interest using vertices
     mask = np.zeros_like(lindst)
@@ -127,7 +125,7 @@ def bev2roi(bev_img, M, vertices):
     lindst = cv2.bitwise_and(lindst, mask)
 
     vertices, points = find_white_contour_vertices(lindst, vertices)
-    # cv2.imshow('lindst', lindst)
+    cv2.imshow('lindst', lindst)
 
     return lindst, vertices, points
 
@@ -135,7 +133,8 @@ def bev2roi(bev_img, M, vertices):
 def find_white_contour_vertices(image, vertices):
     copy_frame = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
+    # cv2.fillPoly(image, [default_space], cyan)
+    # cv2.imshow("temp", image)
     # Threshold the grayscale image to create a binary mask of white areas
     _, thresh = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY)
 
@@ -144,9 +143,8 @@ def find_white_contour_vertices(image, vertices):
 
     # Find white contours
     white_contours = np.argwhere(dst > 0.01 * dst.max())
-
+    # cv2.imshow("white", white_contours)
     y_list = [y for y, x in white_contours if y >= vertices[1][1]]
-
     if not y_list:
         points = default_space
     else:
@@ -225,13 +223,14 @@ def preprocess(img):
 
 
     result = weighted_img(line_image, img, α=1., β=1., λ=0.)
-    # cv2.polylines(result, vertices, True, (0, 255, 255)) # ROI mask
+    # cv2.imshow('dfd', result)
 
     return result, line_image, lane_space
 
 def convert_hough(img, rho, theta, threshold, min_line_len, max_line_gap, vertices):
 
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
+
     # hough_start = time.time()
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
     lane_space = draw_lanes(line_img, lines, vertices)
@@ -281,7 +280,7 @@ def draw_lanes(img, lines ,vertices):
     global first_frame
     global next_frame
     # global prev_lane
-
+    # cv2.imshow("ereq", img)
     # y_global_min = img.shape[0]
     y_global_min = 0
     y_max = img.shape[0]
@@ -333,17 +332,18 @@ def draw_lanes(img, lines ,vertices):
         l_y2 = y_max
         r_y1 = y_global_min
         r_y2 = y_max
-
-    current_frame = np.array([l_x1, l_y1, l_x2, l_y2, r_x1, r_y1, r_x2, r_y2], dtype="float32")
-    if first_frame == 1:
-        next_frame = current_frame
-        first_frame = 0
+        current_frame = np.array([l_x1, l_y1, l_x2, l_y2, r_x1, r_y1, r_x2, r_y2], dtype="float32")
+        if first_frame == 1:
+            next_frame = current_frame
+            first_frame = 0
+        else:
+            prev_frame = cache
+            next_frame = (1 - α) * prev_frame + α * current_frame
+        lane_space = np.array([[next_frame[0], next_frame[1]], [next_frame[2], next_frame[3]],
+                               [next_frame[6], next_frame[7]], [next_frame[4], next_frame[5]]], dtype=int)
     else:
-        prev_frame = cache
-        next_frame = (1-α)*prev_frame+α*current_frame
+        lane_space = default_space
 
-    lane_space = np.array([[next_frame[0], next_frame[1]], [next_frame[2], next_frame[3]],
-     [next_frame[6], next_frame[7]], [next_frame[4], next_frame[5]]], dtype=int)
     cv2.fillPoly(img, [lane_space], (204, 255, 204))
 
     cache = next_frame
@@ -394,9 +394,9 @@ if __name__ == '__main__':
 
     vertices = np.array([                  # test.mp4
         [30, 360],       # 좌하
-        [240, 200],     # 좌상
-        [370, 200],    # 우상
-        [600, 360]     # 우하
+        [250, 90],     # 좌상
+        [390, 90],    # 우상
+        [630, 360]     # 우하
     ])
     #
     # vertices = np.array([  # video.mp4
@@ -437,19 +437,20 @@ if __name__ == '__main__':
     model.eval()
     detection_model = YOLO('best 3.pt')
 
-    cap = cv2.VideoCapture('/home/cvlab/Datasets/test.mp4')    # video setting
+    #cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture('/home/cvlab/Datasets/video_camera1.mp4')    # video setting
     width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
     fps = 15.0
-    delay = round(1000/ fps)
 
     fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    out = cv2.VideoWriter('./ouput.avi', fourcc, fps,(int(width/2), int(height/2)))
+    out = cv2.VideoWriter('./test12.avi', fourcc, fps,(640, 360))
     while True:
 
         process_start = time.time()
         retval, frame = cap.read()
+
         frame = cv2.resize(frame, (640, 360))
         if retval == False:
             break
@@ -492,7 +493,7 @@ if __name__ == '__main__':
         """---------------------------------- Result -----------------------------"""
         lane_points = points
         # x = time.time()
-        points = set_safetyzone(points, 1.1)
+        # points = set_safetyzone(points, 1.0)
         point_center_x , point_center_y = find_center_of_points(points)
 
         if results[0].masks is None:
@@ -534,7 +535,7 @@ if __name__ == '__main__':
             im_array[:, :, 2] = im_array[:, :, 2] * iou_mean
             cv2.putText(im_array, warning_text, text_position, font, font_scale, text_color, font_thickness)
             cv2.circle(im_array, circle_position, radius, red, -1)
-        elif any(x <= 90 for x in distance_list):
+        elif any(x <= 100 for x in distance_list):
             text = "Attention!"
             cv2.circle(im_array, circle_position, radius, yellow, -1)
             cv2.putText(im_array, text, text_position, font, font_scale, text_color, font_thickness)
@@ -560,6 +561,7 @@ if __name__ == '__main__':
             "Twin Time": twin_time
         }
         data.append(time_data)
+
         if cv2.waitKey(10) == 27:
             break
     # # 디렉토리 경로
