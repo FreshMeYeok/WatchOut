@@ -15,7 +15,8 @@
 
 
 ## 4. Demo 및 발표 영상
-[데모 영상 Youtube 링크]()
+[데스크탑을 이용한 실시간 데모](https://youtu.be/ri0G3heXln0)
+[젯슨을 이용한 실시간 데모](https://youtu.be/jZuLtD2kars)
 
 
 ## 5. 실행 방법
