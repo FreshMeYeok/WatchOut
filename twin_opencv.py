@@ -4,9 +4,12 @@ import torch
 from model import TwinLite as net
 import cv2
 from ultralytics import YOLO
-import time
 import math
-from shapely.geometry import Polygon
+import time
+
+
+default_space = np.array([[100, 360], [540, 360], [360, 180], [280, 180]])
+half_w = default_space[0][0] + (default_space[1][0] - default_space[0][0]) // 2
 
 
 def Run(model, img):
@@ -36,25 +39,6 @@ def Run(model, img):
     return img_rs
 
 
-vertices = np.array([                  # video.mp4
-    [100, 720],       # 좌하
-    [420, 400],     # 좌상
-    [840, 400],    # 우상
-    [1150, 720]     # 우하
-])
-
-# vertices = np.array([               #project_video.mp4
-#     [100, 720],       # 좌하
-#     [450, 450],     # 좌상
-#     [800, 450],    # 우상
-#     [1150, 720]     # 우하
-# ])
-# vertices = np.array([  # video_night.mp4
-#     [0, 720],  # 좌하
-#     [240, 300],  # 좌상
-#     [720, 300],  # 우상
-#     [1280, 720]  # 우하
-# ])
 # Color
 red = (0, 0, 255)
 green = (0, 255, 0)
@@ -139,9 +123,10 @@ def roi2bev(roi_img, vertices):  # Bird's eye view
 """bev image를 roi image로 변환"""
 
 
-def bev2roi(bev_img, M, lane_infor, vertices):
+def bev2roi(bev_img, M, vertices):
     linV = np.linalg.inv(M)
-    lindst = cv2.warpPerspective(bev_img, linV, (1280, 720))
+
+    lindst = cv2.warpPerspective(bev_img, linV, (640, 360))
 
     # Create a mask of the region of interest using vertices
     mask = np.zeros_like(lindst)
@@ -149,107 +134,64 @@ def bev2roi(bev_img, M, lane_infor, vertices):
 
     # Apply the mask to the lindst image
     lindst = cv2.bitwise_and(lindst, mask)
+
     vertices, points = find_white_contour_vertices(lindst, vertices)
-    # cv2.imshow('lindst', lindst)
+    cv2.imshow('lindst', lindst)
+
     return lindst, vertices, points
 
 
 def find_white_contour_vertices(image, vertices):
-    coordinate_list = []
     copy_frame = image.copy()
-    h, w, _ = image.shape
-    half_w = w / 2
-    default_space = np.array([[320, 720], [960, 720], [700, 450], [500, 450]])
-
-    # Convert the image to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # cv2.imshow('gray', gray)
+    # cv2.fillPoly(image, [default_space], cyan)
+    # cv2.imshow("temp", image)
     # Threshold the grayscale image to create a binary mask of white areas
     _, thresh = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY)
-    # cv2.imshow('thresh', thresh)
-    dst = cv2.cornerHarris(thresh, 5, 3, 0.04)
-    dst = cv2.dilate(dst, None)
 
-    image[dst > 0.01 * dst.max()] = [0, 0, 255]
-    four_corner = np.zeros(thresh.shape)
-    four_corner[dst > 0.01 * dst.max()] = 1
-    y_list = []
+    # Detect corners using cornerHarris
+    dst = cv2.cornerHarris(thresh, 2, 3, 0.04)
 
-    for i in range(len(four_corner)):
-        for j in range(len(four_corner[0])):
-            if four_corner[i][j] == 1 and i >= vertices[1][1]:
-                coordinate_list.append([i, j])
-                y_list.append(i)
-    bottom_candidate = []
-    top_candidate = []
-    if len(y_list) == 0:
+    # Find white contours
+    white_contours = np.argwhere(dst > 0.01 * dst.max())
+    # cv2.imshow("white", white_contours)
+    y_list = [y for y, x in white_contours if y >= vertices[1][1]]
+    if not y_list:
         points = default_space
     else:
         max_y_value = max(y_list)
         min_y_value = min(y_list)
 
-        for coordinate in coordinate_list:
-            i, _ = coordinate
-            if i == max_y_value:
-                bottom_candidate.append(coordinate[1])
-            if i == min_y_value:
-                top_candidate.append(coordinate[1])
+        bottom_candidate = [x for y, x in white_contours if y == max_y_value]
+        top_candidate = [x for y, x in white_contours if y == min_y_value]
 
-        if len(bottom_candidate) == 0 or len(top_candidate) == 0:
+        if not bottom_candidate or not top_candidate:
             points = default_space
         elif len(bottom_candidate) == 1 and len(top_candidate) > 1:
             bottom_x = bottom_candidate[0]
-            if bottom_x >= half_w:
-                differ = bottom_x - half_w
-                bottom_x_another = half_w - differ
-                max_bottom = [bottom_x, max_y_value]
-                min_bottom = [bottom_x_another, max_y_value]
-            else:
-                differ = half_w - bottom_x
-                bottom_x_another = half_w + differ
-                max_bottom = [bottom_x_another, max_y_value]
-                min_bottom = [bottom_x, max_y_value]
+            bottom_x_another = half_w - (bottom_x - half_w) if bottom_x >= half_w else half_w + (half_w - bottom_x)
+            max_bottom = [bottom_x, max_y_value]
+            min_bottom = [bottom_x_another, max_y_value]
             max_top = [max(top_candidate), min_y_value]
             min_top = [min(top_candidate), min_y_value]
             points = np.array([max_bottom, min_bottom, min_top, max_top])
         elif len(bottom_candidate) > 1 and len(top_candidate) == 1:
             top_x = top_candidate[0]
-            if top_x >= half_w:
-                differ = top_x - half_w
-                top_x_another = half_w - differ
-                max_top = [top_x, min_y_value]
-                min_top = [top_x_another, min_y_value]
-            else:
-                differ = half_w - top_x
-                top_x_another = half_w + differ
-                max_top = [top_x_another, min_y_value]
-                min_top = [top_x, min_y_value]
+            top_x_another = half_w - (top_x - half_w) if top_x >= half_w else half_w + (half_w - top_x)
             max_bottom = [max(bottom_candidate), max_y_value]
             min_bottom = [min(bottom_candidate), max_y_value]
+            max_top = [top_x, min_y_value]
+            min_top = [top_x_another, min_y_value]
             points = np.array([max_bottom, min_bottom, min_top, max_top])
         elif len(bottom_candidate) == 1 and len(top_candidate) == 1:
             bottom_x = bottom_candidate[0]
             top_x = top_candidate[0]
-            if bottom_x >= half_w:
-                differ = bottom_x - half_w
-                bottom_x_another = half_w - differ
-                max_bottom = [bottom_x, max_y_value]
-                min_bottom = [bottom_x_another, max_y_value]
-            else:
-                differ = half_w - bottom_x
-                bottom_x_another = half_w + differ
-                max_bottom = [bottom_x_another, max_y_value]
-                min_bottom = [bottom_x, max_y_value]
-            if top_x >= half_w:
-                differ = top_x - half_w
-                top_x_another = half_w - differ
-                max_top = [top_x, min_y_value]
-                min_top = [top_x_another, min_y_value]
-            else:
-                differ = half_w - top_x
-                top_x_another = half_w + differ
-                max_top = [top_x_another, min_y_value]
-                min_top = [top_x, min_y_value]
+            bottom_x_another = half_w - (bottom_x - half_w) if bottom_x >= half_w else half_w + (half_w - bottom_x)
+            top_x_another = half_w - (top_x - half_w) if top_x >= half_w else half_w + (half_w - top_x)
+            max_bottom = [bottom_x, max_y_value]
+            min_bottom = [bottom_x_another, max_y_value]
+            max_top = [top_x, min_y_value]
+            min_top = [top_x_another, min_y_value]
             points = np.array([max_bottom, min_bottom, min_top, max_top])
         else:
             max_bottom = [max(bottom_candidate), max_y_value]
@@ -258,10 +200,6 @@ def find_white_contour_vertices(image, vertices):
             min_top = [min(top_candidate), min_y_value]
             points = np.array([max_bottom, min_bottom, min_top, max_top])
 
-    # cv2.fillPoly(copy_frame, [points], cyan)
-    # cv2.imshow("mdkafdf", copy_frame)
-    # cv2.imshow('four_corner', four_corner)
-    # cv2.imshow('harris', image)
     return copy_frame, points
 
 
@@ -282,30 +220,20 @@ def preprocess(img):
     thresh = 50  # 100
     min_line_len = 100  # 50
     max_line_gap = 150
-
     gray_image = grayscale(img)
-    # cv2.imshow('gray_image', gray_image)
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)  # 더 넓은 폭의 노란색 범위를 얻기위해 HSV를 이용한다.
-    # cv2.imshow('img_hsv', img_hsv)
-    lower_yellow = np.array([20, 100, 100], dtype="uint8")
-    upper_yellow = np.array([30, 255, 255], dtype="uint8")
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    lower_green = np.array([30, 80, 80], dtype="uint8")
+    upper_green = np.array([70, 255, 255], dtype="uint8")
 
-    mask_yellow = cv2.inRange(img_hsv, lower_yellow, upper_yellow)
-    # cv2.imshow('mask_yellow', mask_yellow)
-    mask_white = cv2.inRange(gray_image, 140, 255)
-    # cv2.imshow('mask_white', mask_white)
+    mask_green = cv2.inRange(img_hsv, lower_green, upper_green)
+    mask_yw_image = cv2.bitwise_and(gray_image, mask_green)  # Grayscale로 변환한 원본 이미지에서 흰색과 노란색만 추출
 
-    mask_yw = cv2.bitwise_or(mask_white, mask_yellow)  # 흰색과 노란색의 영역을 합친다.
-    mask_yw_image = cv2.bitwise_and(gray_image, mask_yw)  # Grayscale로 변환한 원본 이미지에서 흰색과 노란색만 추출
-
-    # cv2.imshow('white and yello image', mask_yw_image)
     canny_edges = auto_canny(mask_yw_image, kernel_size)
-
-    # cv2.imshow('canny_image_bev', canny_edges)
     line_image, lane_space = convert_hough(canny_edges, rho, theta, thresh, min_line_len, max_line_gap, vertices)
     # cv2.imshow('line_image', line_image)
+
     result = weighted_img(line_image, img, α=1., β=1., λ=0.)
-    # cv2.polylines(result, vertices, True, (0, 255, 255)) # ROI mask
+    # cv2.imshow('dfd', result)
 
     return result, line_image, lane_space
 
@@ -313,8 +241,13 @@ def preprocess(img):
 def convert_hough(img, rho, theta, threshold, min_line_len, max_line_gap, vertices):
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
                             maxLineGap=max_line_gap)
+
+    # hough_start = time.time()
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
     lane_space = draw_lanes(line_img, lines, vertices)
+    # hough_end = time.time()
+    # hough_run = round(hough_end - hough_start, 3)
+    # print(f"hough 실행 시간: {hough_run} 초")
     return line_img, lane_space
 
 
@@ -361,7 +294,7 @@ def draw_lanes(img, lines, vertices):
     global first_frame
     global next_frame
     # global prev_lane
-
+    # cv2.imshow("ereq", img)
     # y_global_min = img.shape[0]
     y_global_min = 0
     y_max = img.shape[0]
@@ -414,45 +347,88 @@ def draw_lanes(img, lines, vertices):
         l_y2 = y_max
         r_y1 = y_global_min
         r_y2 = y_max
-
-    current_frame = np.array([l_x1, l_y1, l_x2, l_y2, r_x1, r_y1, r_x2, r_y2], dtype="float32")
-    if first_frame == 1:
-        next_frame = current_frame
-        first_frame = 0
+        current_frame = np.array([l_x1, l_y1, l_x2, l_y2, r_x1, r_y1, r_x2, r_y2], dtype="float32")
+        if first_frame == 1:
+            next_frame = current_frame
+            first_frame = 0
+        else:
+            prev_frame = cache
+            next_frame = (1 - α) * prev_frame + α * current_frame
+        lane_space = np.array([[next_frame[0], next_frame[1]], [next_frame[2], next_frame[3]],
+                               [next_frame[6], next_frame[7]], [next_frame[4], next_frame[5]]], dtype=int)
     else:
-        prev_frame = cache
-        next_frame = (1 - α) * prev_frame + α * current_frame
+        lane_space = default_space
 
-    lane_space = np.array([[next_frame[0], next_frame[1]], [next_frame[2], next_frame[3]],
-                           [next_frame[6], next_frame[7]], [next_frame[4], next_frame[5]]], dtype=int)
     cv2.fillPoly(img, [lane_space], (204, 255, 204))
-    prev_lane = lane_space
+
     cache = next_frame
 
     return lane_space
 
 
+def set_safetyzone(points, divider):
+    max_bottom, min_bottom, min_top, max_top = points
+    x1, y1 = max_top
+    x2, y2 = max_bottom
+    a = (y2 - y1) / (x2 - x1)
+    b = y1 - a * x1
+    new_left_x = min(min_bottom[0], min_top[0]) + int(abs(min_top[0] - min_bottom[0]) / divider)
+    new_y = max_bottom[1] - int((max_bottom[1] - max_top[1]) / divider)
+    new_right_x = (new_y - b) / a
+    if not math.isnan(new_right_x):
+        new_right_x = int(new_right_x)
+    else:
+        new_right_x = 360
+    new_left = [new_left_x, new_y]
+    new_right = [new_right_x, new_y]
+    new_points = np.array([max_bottom, min_bottom, new_left, new_right])
+    return new_points
+
+
+
+def find_center_of_points(points):
+    """
+    주어진 좌표 배열의 중심점을 찾는 함수
+    :param points: (N, 2) 형태의 NumPy 배열. 각 행은 (x, y) 좌표를 나타냄.
+    :return: 중심점 좌표 (x_center, y_center)
+    """
+    x_mean = int(np.mean(points[:, 0]))
+    y_mean = int(np.mean(points[:, 1]))
+    return x_mean, y_mean
+
+
 if __name__ == '__main__':
     first_frame = 1
+    vertices = np.array([                  # test.mp4
+        [30, 360],       # 좌하
+        [250, 90],     # 좌상
+        [390, 90],    # 우상
+        [630, 360]     # 우하
+    ])
 
-    image_path = "/home/cvlab/Datasets/image.png"  # night.png
+    image_path = "/home/cvlab/Downloads/yellow_can.png"  # night.png
     model = net.TwinLiteNet()
     model = torch.nn.DataParallel(model)
     model = model.cuda()
     model.load_state_dict(torch.load('pretrained/best.pth'))  # test_/model_1.pth
     model.eval()
+    detection_model = YOLO('model/best_yolo.pt')
 
     img = cv2.imread(image_path)
-    img = cv2.resize(img, (1280, 720))
+    img = cv2.resize(img, (640, 360))
+    cpimg = img.copy()
+    results = detection_model(cpimg)
+    annotated_frame = results[0].plot(boxes=False)
     img = Run(model, img)
     roi_view = ROI_BEV(img, vertices)
     dst, M = roi2bev(roi_view, vertices)
     result, line_image, lane_space = preprocess(dst)
-    final_image, real_lane, points = bev2roi(result, M, lane_space, vertices)
+    final_image, real_lane, points = bev2roi(result, M, vertices)
     # cv2.imshow("roi", final_image)
     real_image = weighted_img(real_lane, img, α=1., β=1., λ=0.)
     lane_detection = weighted_img(final_image, img, α=1., β=1., λ=0.)
-    cv2.imwrite('/home/cvlab/Datasets/opencv_and_Twin_final.png', lane_detection)
+    cv2.imwrite('/home/cvlab/Datasets/opencv_and_Twin_yellow.png', lane_detection)
     cv2.fillPoly(img, [points], white)
     cv2.imshow('result', img)
-    cv2.imwrite('/home/cvlab/Datasets/opencv_and_Twin_noon.png', img)
+    cv2.imwrite('/home/cvlab/Datasets/opencv_and_Twin_yello_final.png', img)
+    cv2.imwrite('/home/cvlab/Datasets/opencv_and_Twin_yello_yolo.png', annotated_frame)
