@@ -7,14 +7,11 @@
 블랙박스(웹 캠)와 Edge Device(Jetson Orin Nano), 스마트폰의 상호작용을 통해 운전자에게 교통 위험을 알려주는 서비스 개발을 목표로 한다.
 
 ## 2. System Flow
-![image](https://github.com/FreshMeYeok/.github/assets/39149858/365adb9a-0fd9-40aa-977a-4368051dba6a)
+![image](https://github.com/FreshMeYeok/WatchOut/blob/main/Readme/System_flow.png)
 
 
 ## 3. Algorithm
-
-
-## 4. 
-
+![image](https://github.com/FreshMeYeok/WatchOut/blob/main/Readme/Algorithm.png)
 
 
 ## 4. Demo 및 발표 영상
