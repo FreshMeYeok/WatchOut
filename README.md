@@ -21,7 +21,9 @@
 ## 5. 실행 방법
 
 ### 5.1 [Requirments](https://github.com/FreshMeYeok/WatchOut/blob/main/requirements.txt)
-$ pip install -r requirements.txt
+```shell
+pip install -r requirements.txt
+```
 
 ### 5.2 파이썬  실행
 ```shell
