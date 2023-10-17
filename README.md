@@ -22,9 +22,9 @@
 
 ### 5.1 파이썬 서버 실행
 ```shell
-git clone https://github.com/FreshMeYeok/BeCareFULL.git
-cd BeCareFULL/final_testing/load_and_predict
-python3 main.py
+git clone https://github.com/FreshMeYeok/WatchOut.git
+cd WatchOut
+python3 process_tensorrt.py
 ```
 
 
