@@ -4,10 +4,10 @@ import argparse
 # from tqdm.autonotebook import tqdm
 import os
 import torch
-from model.TwinLite import TwinLiteNet as Net
+from model import TwinLite as net
 import onnx
 import torch
-
+from collections import OrderedDict
 import pandas as pd
 from pathlib import Path
 
@@ -47,9 +47,6 @@ def select_device(device='', batch_size=0, newline=True):
         s = s.rstrip()
     # LOGGER.info(s)
     return torch.device(arg)
-
-
-
 
 
 def export_formats():
@@ -122,9 +119,11 @@ def run(
         device='',
         include=[]
     ):
-    model = net.Net()
+    model = net.TwinLiteNet()
     model = model.cuda()
-    model.load_state_dict(torch.load(weights))
+    temp = torch.load(weights)
+    new_weights = OrderedDict((key.replace("module.", ""), value) for key, value in temp.items())
+    model.load_state_dict(new_weights)
     device = select_device(device)
 
     include = [x.lower() for x in include]  # to lowercase
@@ -153,7 +152,7 @@ def run(
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str,
-                        default='pretrained/model_best.pth', help='model.pt path(s)')
+                        default='pretrained/best.pth', help='model.pt path(s)')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[360, 640], help='image (h, w)')
     parser.add_argument('--batch-size', type=int, default=1, help='batch size')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
