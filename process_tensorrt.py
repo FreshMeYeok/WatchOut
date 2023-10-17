@@ -35,19 +35,19 @@ def Run(model, img):
     x0 = img_out[0]
     x1 = img_out[1]
 
-    _, da_predict = torch.max(x0, 1)
+    # _, da_predict = torch.max(x0, 1)
     _, ll_predict = torch.max(x1, 1)
 
-    DA = da_predict.byte().cpu().data.numpy()[0] * 255
+    # DA = da_predict.byte().cpu().data.numpy()[0] * 255
     LL = ll_predict.byte().cpu().data.numpy()[0] * 255
-    img_rs[DA > 100] = [255, 0, 0]
+    # img_rs[DA > 100] = [255, 0, 0]
     img_rs[LL > 100] = [0, 255, 0]
 
     return img_rs
 
 
 class TRT(nn.Module):
-    def __init__(self, weight='pretrained/best860.engine'):
+    def __init__(self, weight='model/jetson.engine'):
         super().__init__()
         device = torch.device('cuda:0')
         Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
@@ -99,12 +99,8 @@ l_pos, r_pos, l_cent, r_cent = 0, 0, 0, 0
 uxhalf, uyhalf, dxhalf, dyhalf = 0, 0, 0, 0
 next_frame = (0, 0, 0, 0, 0, 0, 0, 0)
 
-def save_video(filename, frame=20.0):
-    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    out = cv2.VideoWriter(filename, fourcc, frame, (1280,720))
-    return out
 
-
+"""lane process function"""
 def grayscale(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -113,15 +109,6 @@ def get_slope(x1,y1,x2,y2):
 
 def weighted_img(img, initial_img, α=0.8, β=1., λ=0.):
     return cv2.addWeighted(initial_img, α, img, β, λ)
-
-hei = 25
-# alpha = int(args.alpha)
-font_size = 1
-
-""" 현재 영상 프레임 표시 """
-def show_fps(image, frames, start, color = white):
-    now_fps = round(frames / (time.time() - start), 2)
-    cv2.putText(image, "FPS : %.2f"%now_fps, (10, hei), font, 0.8, color, font_size)
 
 """Bird's eye view 적용을 위한 ROI image 반환"""
 def ROI_BEV(img, vertices):
@@ -134,7 +121,6 @@ def ROI_BEV(img, vertices):
     cv2.fillPoly(mask, [vertices], ignore_mask_color)
     # vertiecs로 만든 polygon으로 이미지의 ROI를 정하고 ROI 이외의 영역은 모두 검정색으로 정한다.
     masked_image = cv2.bitwise_and(img, mask)
-    # cv2.imshow('masked', masked_image)
     return masked_image
 
 """roi image를 BEV이미지으로 변환"""
@@ -143,7 +129,6 @@ def roi2bev(roi_img, vertices):     # Bird's eye view
     pts2 = np.float32([[425, 0], [425, 720], [855, 0], [855, 720]])
     M = cv2.getPerspectiveTransform(pts1, pts2) + np.random.rand(3, 3) * 1e-9
     dst = cv2.warpPerspective(roi_img, M, (1280, 720))
-    # cv2.imshow("bdffdd", dst)
     return dst, M
 
 """bev image를 roi image로 변환"""
@@ -165,12 +150,10 @@ def bev2roi(bev_img, M, vertices):
 
     return lindst, vertices, points
 
-
+"""find the lane in image"""
 def find_white_contour_vertices(image, vertices):
     copy_frame = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # cv2.fillPoly(image, [default_space], cyan)
-    # cv2.imshow("temp", image)
     # Threshold the grayscale image to create a binary mask of white areas
     _, thresh = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY)
 
@@ -179,7 +162,7 @@ def find_white_contour_vertices(image, vertices):
 
     # Find white contours
     white_contours = np.argwhere(dst > 0.01 * dst.max())
-    # cv2.imshow("white", white_contours)
+
     y_list = [y for y, x in white_contours if y >= vertices[1][1]]
     if not y_list:
         points = default_space
@@ -236,7 +219,6 @@ def auto_canny(image, kernel_size ,sigma = 0.33):
     return edged
 
 def preprocess(img):
-
     kernel_size = 3
 
     rho = 2
@@ -252,27 +234,19 @@ def preprocess(img):
     mask_green = cv2.inRange(img_hsv, lower_green, upper_green)
     mask_yw_image = cv2.bitwise_and(gray_image, mask_green)  # Grayscale로 변환한 원본 이미지에서 흰색과 노란색만 추출
 
-
     canny_edges = auto_canny(mask_yw_image, kernel_size)
     line_image, lane_space = convert_hough(canny_edges, rho, theta, thresh, min_line_len, max_line_gap, vertices)
-    # cv2.imshow('line_image', line_image)
-
 
     result = weighted_img(line_image, img, α=1., β=1., λ=0.)
-    # cv2.imshow('dfd', result)
+
 
     return result, line_image, lane_space
 
 def convert_hough(img, rho, theta, threshold, min_line_len, max_line_gap, vertices):
 
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
-
-    # hough_start = time.time()
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
     lane_space = draw_lanes(line_img, lines, vertices)
-    # hough_end = time.time()
-    # hough_run = round(hough_end - hough_start, 3)
-    # print(f"hough 실행 시간: {hough_run} 초")
     return line_img, lane_space
 
 def ransac_line_fit(points_start, points_end, iterations=100, threshold=10):
@@ -315,9 +289,7 @@ def draw_lanes(img, lines ,vertices):
     global cache
     global first_frame
     global next_frame
-    # global prev_lane
-    # cv2.imshow("ereq", img)
-    # y_global_min = img.shape[0]
+
     y_global_min = 0
     y_max = img.shape[0]
     l_slope, r_slope = [], []
@@ -428,19 +400,19 @@ if __name__ == '__main__':
     # SIGINT 시그널 핸들러 설정
     signal.signal(signal.SIGINT, sigint_handler)
 
-    vertices = np.array([                  # test.mp4
-        [30, 360],       # 좌하
-        [250, 90],     # 좌상
-        [390, 90],    # 우상
-        [630, 360]     # 우하
-    ])
-    #
-    # vertices = np.array([  # video.mp4
-    #     [30, 360],  # 좌하
-    #     [210, 200],  # 좌상
-    #     [420, 200],  # 우상
-    #     [600, 360]  # 우하
+    # vertices = np.array([                  # test.mp4
+    #     [30, 360],       # 좌하
+    #     [250, 90],     # 좌상
+    #     [390, 90],    # 우상
+    #     [630, 360]     # 우하
     # ])
+    #
+    vertices = np.array([  # video.mp4
+        [30, 360],  # 좌하
+        [210, 200],  # 좌상
+        [420, 200],  # 우상
+        [600, 360]  # 우하
+    ])
 
     # vertices = np.array([               #project_video.mp4
     #     [70, 360],       # 좌하
@@ -466,17 +438,17 @@ if __name__ == '__main__':
     radius = 20
 
     first_frame = 1
-    trt = TRT('pretrained/best.engine')
-    detection_model = YOLO('best 3.pt')
-    # cap = cv2.VideoCapture(0)
-    cap = cv2.VideoCapture('/home/cvlab/Datasets/video_camera1.mp4')    # video setting
+    trt = TRT('model/jetson.engine')
+    detection_model = YOLO('model/best_yolo.pt')
+    #cap= cv2.VideoCapture(0)
+    cap = cv2.VideoCapture('/home/cvlab/Datasets/video_mun.mp4')    # video setting
     width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
     fps = 15.0
 
     fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    out = cv2.VideoWriter('./test12.avi', fourcc, fps,(640, 360))
+    out = cv2.VideoWriter('results/test12.avi', fourcc, fps, (640, 360))
     while True:
 
         process_start = time.time()
@@ -493,7 +465,6 @@ if __name__ == '__main__':
         print(f"TwinLiteNet 함수 실행 시간: {twin_time} 초")
         """--------------------------------- Lane Detection---------------------------"""
         cpframe = frame.copy()
-        # cv2.imshow("run_model", result)
 
         roi_view = ROI_BEV(result, vertices)
         cv2.imshow("roi_view", roi_view)
@@ -502,17 +473,8 @@ if __name__ == '__main__':
 
         result, line_image, lane_space = preprocess(dst)
 
-        # cv2.imshow("resultss", result)
         final_image, real_lane, points = bev2roi(result, M, vertices)
 
-
-        # cv2.imshow("roi", final_image)
-        # real_image = weighted_img(real_lane, frame, α=1., β=1., λ=0.)
-        # lane_detection = weighted_img(final_image, frame, α=1., β=1., λ=0.)
-        # cv2.fillPoly(cpframe, [points], cyan)
-        # cv2.imshow("frmfe", cpframe)
-        # cv2.imshow('lane_detection', lane_detection)
-        # cv2.imshow('real_image', real_image)
         """--------------------------------- Object Detection---------------------------"""
         start_time_yolo = time.time()
         results = detection_model(cpframe)
@@ -595,37 +557,7 @@ if __name__ == '__main__':
 
         if cv2.waitKey(10) == 27:
             break
-    # # 디렉토리 경로
-    # directory_path = '/home/cvlab/DoTA_dataset/frames/0qfbmt4G8Rw_001602/images'
-    #
-    # # 디렉토리 내의 모든 파일 목록 가져오기
-    # file_list = os.listdir(directory_path)
-    #
-    # # jpg 파일만 필터링
-    # jpg_files = [file for file in file_list if file.endswith('.jpg')]
-    #
-    # # 각 jpg 파일을 읽어와서 처리
-    # for jpg_file in jpg_files:
-    #     file_path = os.path.join(directory_path, jpg_file)
-    #     image = cv2.imread(file_path)
-    #
-    #     # 여기서 image 변수를 사용하여 이미지를 처리하거나 원하는 작업을 수행합니다.
-    #
-    #     # 필요한 작업을 수행한 후 이미지 객체를 해제합니다.
-    #     cv2.destroyAllWindows()
-    with open('execution_times.csv', 'w', newline='') as csv_file:
-        fieldnames = ["Process Time", "Yolo Time", "Twin Time"]
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in data:
-            writer.writerow(row)
 
     cap.release()
     out.release()
     cv2.destroyAllWindows()
-
-
-
-
-
-
